@@ -174,6 +174,7 @@ class TextClassifier(nn.Module):
 
 VOCABSIZE = max(list(main_dict.values())) + 1
 EMBEDDIM = 100
+
 model = TextClassifier(VOCABSIZE, EMBEDDIM)
 criterion = nn.BCEWithLogitsLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -247,5 +248,3 @@ test_string = test_string.lower().split(" ")
 
 test_numeric = [main_dict.get(word, main_dict["<UNK>"]) for word in test_string]
 print(predict(model, test_numeric))
-
-print(list(zip(test_string, test_numeric)))
