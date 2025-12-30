@@ -1,0 +1,1 @@
+Neural net to predict whether a sentence came from Trump or Obama. Trained on State of Union Speeches. 94\% accuracy.
