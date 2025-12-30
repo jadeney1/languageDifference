@@ -108,6 +108,8 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from collections import Counter
 import random
+import torch.nn.functional as F
+
 
 # pad
 MAXLEN = 20
@@ -152,25 +154,41 @@ val_dataset = TextDataset(X_val, y_val)
 val_loader = DataLoader(val_dataset, batch_size=BATCHSIZE, shuffle=False)
 
 class TextClassifier(nn.Module):
-    def __init__(self, vocab_size, embed_dim=64):
+    def __init__(self, vocab_size, embed_dim=64, hidden_dim=128, num_layers=1, dropout=0.3):
         super().__init__()
+        
         self.embedding = nn.Embedding(
             num_embeddings=vocab_size,
             embedding_dim=embed_dim,
             padding_idx=0
         )
-        self.fc = nn.Linear(embed_dim, 1)
+        
+        self.lstm = nn.LSTM(
+            input_size=embed_dim,
+            hidden_size=hidden_dim,
+            num_layers=num_layers,
+            batch_first=True,
+            bidirectional=False
+        )
+
+        self.dropout = nn.Dropout(dropout)
+        self.fc = nn.Linear(hidden_dim, 1)
 
     def forward(self, x):
         emb = self.embedding(x)
-        mask = (x != 0).unsqueeze(-1)
-        emb = emb*mask
-        lengths = mask.sum(dim=1).clamp(min=1)
-        avg = emb.sum(dim=1)/lengths
-        logits = self.fc(avg)
+        
+        lengths = (x != 0).sum(dim=1)
 
+        packed = nn.utils.rnn.pack_padded_sequence(
+            emb, lengths.cpu(), batch_first=True, enforce_sorted=False
+        )
+        
+        packed_out, (h_n, c_n) = self.lstm(packed)
+        last_hidden = h_n[-1]  
+        
+        out = self.dropout(last_hidden)
+        logits = self.fc(out)
         return logits.squeeze(1)
-    
 
 VOCABSIZE = max(list(main_dict.values())) + 1
 EMBEDDIM = 100
@@ -196,7 +214,7 @@ def evaluate(model, val_loader):
 
     return correct / total
 
-EPOCHS = 25
+EPOCHS = 50
 
 for epoch in range(EPOCHS):
     model.train()
@@ -223,9 +241,10 @@ for epoch in range(EPOCHS):
             total_samples += y_batch.size(0)
 
     epoch_acc = total_correct / total_samples
-    print(f"Epoch training accuracy: {epoch_acc:.3f}")
+    print(f"Epoch {epoch}")
+    print(f"Training accuracy: {epoch_acc:.3f}")
     val_acc = evaluate(model, val_loader)
-    print(f"Epoch validation accuracy: {val_acc:.3f}")
+    print(f"Validation accuracy: {val_acc:.3f}")
 
 
 
@@ -248,3 +267,6 @@ test_string = test_string.lower().split(" ")
 
 test_numeric = [main_dict.get(word, main_dict["<UNK>"]) for word in test_string]
 print(predict(model, test_numeric))
+
+
+torch.save(model, 'model.pth')
