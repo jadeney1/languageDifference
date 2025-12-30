@@ -98,6 +98,11 @@ X, y = shuffle(X, y, random_state=10)
 
 from sklearn.model_selection import train_test_split
 
+X_train, X_val, y_train, y_val = train_test_split(X, y,
+                                                  test_size=0.1,
+                                                  random_state=10,
+                                                  shuffle=True)
+
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
@@ -107,16 +112,24 @@ import random
 # pad
 MAXLEN = 20
 
-for i,sentence in enumerate(X):
-    if len(sentence) > MAXLEN:
-        s = sentence[:MAXLEN]
-    if len(sentence) < MAXLEN:
-        s = sentence + [0]*(MAXLEN-len(sentence))
-    X[i] = s
+def pad(data):
+    for i,sentence in enumerate(data):
+        if len(sentence) > MAXLEN:
+            s = sentence[:MAXLEN]
+        if len(sentence) < MAXLEN:
+            s = sentence + [0]*(MAXLEN-len(sentence))
+        data[i] = s
 
+    return data
 
-X = torch.tensor(X, dtype=torch.long)
-y = torch.tensor(y, dtype=torch.float)
+X_train = pad(X_train)
+X_val = pad(X_val)
+
+X = torch.tensor(X_train, dtype=torch.long)
+y = torch.tensor(y_train, dtype=torch.float)
+
+X_val = torch.tensor(X_val, dtype=torch.long)
+y_val = torch.tensor(y_val, dtype=torch.float)
 
 NUMSAMPLES = X.shape[1]
 BATCHSIZE = 4
@@ -134,6 +147,9 @@ class TextDataset(Dataset):
     
 dataset = TextDataset(X, y)
 loader = DataLoader(dataset, batch_size=BATCHSIZE, shuffle=True)
+
+val_dataset = TextDataset(X_val, y_val)
+val_loader = DataLoader(val_dataset, batch_size=BATCHSIZE, shuffle=False)
 
 class TextClassifier(nn.Module):
     def __init__(self, vocab_size, embed_dim=64):
@@ -157,10 +173,27 @@ class TextClassifier(nn.Module):
     
 
 VOCABSIZE = max(list(main_dict.values())) + 1
-
-model = TextClassifier(VOCABSIZE)
+EMBEDDIM = 100
+model = TextClassifier(VOCABSIZE, EMBEDDIM)
 criterion = nn.BCEWithLogitsLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+
+def evaluate(model, val_loader):
+    model.eval()
+    correct = 0
+    total = 0
+
+    with torch.no_grad():
+        for X_batch, y_batch in val_loader:
+            logits = model(X_batch)
+            probs = torch.sigmoid(logits)
+            preds = (probs>0.5).float()
+
+            correct += (preds == y_batch).sum().item()
+            total += y_batch.size(0)
+
+    return correct / total
 
 EPOCHS = 25
 
@@ -189,9 +222,12 @@ for epoch in range(EPOCHS):
             total_samples += y_batch.size(0)
 
     epoch_acc = total_correct / total_samples
-    print(f"Epoch accuracy: {epoch_acc}")
+    print(f"Epoch training accuracy: {epoch_acc:.3f}")
+    val_acc = evaluate(model, val_loader)
+    print(f"Epoch validation accuracy: {val_acc:.3f}")
 
-    
+
+
 def predict(model, sentence):
     model.eval()
     with torch.no_grad():
@@ -206,10 +242,10 @@ test_trump = [main_dict[word] for word in trump_sentences[5]]
 test_obama = [main_dict[word] for word in obama_sentences[5]]
 
 
-test_string = "But I do want to say and some people say oh you shouldn't say it it sounds negative"
+test_string = "So I wish that the media would report that the"
 test_string = test_string.lower().split(" ")
-print(test_string)
 
 test_numeric = [main_dict.get(word, main_dict["<UNK>"]) for word in test_string]
-print(test_numeric)
 print(predict(model, test_numeric))
+
+print(list(zip(test_string, test_numeric)))
