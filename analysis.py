@@ -7,7 +7,7 @@ import re
 from sklearn.utils import shuffle
 
 obama = Path("obama_speeches")
-obama_files = obama.glob("*.txt")
+obama_files = obama.glob("**/*.txt")
 
 obama_all = ""
 
@@ -16,7 +16,7 @@ for file in obama_files:
     obama_all += text
 
 trump = Path("trump_speeches")
-trump_files = trump.glob("*.txt")
+trump_files = trump.rglob("*.txt")
 
 trump_all = ""
 
@@ -69,12 +69,14 @@ obama_sentences = corpus(obama_all)
 all_words = trump_sentences + obama_sentences
 all_words = list(set([word for sentence in all_words for word in sentence]))
 
-main_dict = {word: (i+1) for i, word in enumerate(all_words)}
+main_dict = {word: (i+2) for i, word in enumerate(all_words)}
+main_dict['<PAD>'] = 0
+main_dict['<UNK>'] = 1
 
 def to_numeric(dict, data):
     main = []
     for sentence in data:
-        s = [dict[word] for word in sentence]
+        s = [dict.get(word, dict["<UNK>"]) for word in sentence]
         main.append(s)
 
     return main
@@ -203,14 +205,11 @@ reverse_dict = {v:k for k, v in main_dict.items()}
 test_trump = [main_dict[word] for word in trump_sentences[5]]
 test_obama = [main_dict[word] for word in obama_sentences[5]]
 
-print(predict(model, test_trump))
-print(predict(model, test_obama))
 
+test_string = "But I do want to say and some people say oh you shouldn't say it it sounds negative"
+test_string = test_string.lower().split(" ")
+print(test_string)
 
-
-
-
-
-
-
-
+test_numeric = [main_dict.get(word, main_dict["<UNK>"]) for word in test_string]
+print(test_numeric)
+print(predict(model, test_numeric))
